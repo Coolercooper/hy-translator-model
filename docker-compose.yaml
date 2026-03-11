@@ -1,0 +1,32 @@
+services:
+  translator:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        GGUF_MODEL_FILE: ${GGUF_MODEL_FILE:-HY-MT1.5-1.8B-Q4_K_M.gguf}
+      additional_contexts:
+        modelsrc: ${HOST_MODEL_DIR:-/data/models}
+    image: hy-mt-translator:fastapi-q4km
+    container_name: hy-mt-translator
+    restart: unless-stopped
+
+    ports:
+      - "8000:8000"
+
+    environment:
+      MODEL_FILE: /models/${GGUF_MODEL_FILE:-HY-MT1.5-1.8B-Q4_K_M.gguf}
+      MAX_NEW_TOKENS: ${MAX_NEW_TOKENS:-256}
+      LLAMA_THREADS: ${LLAMA_THREADS:-8}
+      LLAMA_CTX_SIZE: ${LLAMA_CTX_SIZE:-2048}
+      LLAMA_PARALLEL: ${LLAMA_PARALLEL:-1}
+      APIKEY: ${APIKEY:-}
+      UVICORN_WORKERS: ${UVICORN_WORKERS:-2}
+
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 120s        
+

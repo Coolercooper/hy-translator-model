@@ -1,0 +1,11 @@
+.venv
+.git
+__pycache__
+*.pyc
+*.pyo
+*.egg-info
+.python-version
+README.md
+example.py
+main.py
+docker-compose.yaml
