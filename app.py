@@ -1,4 +1,5 @@
 import os
+import sys
 import time
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -14,6 +15,20 @@ MAX_NEW_TOKENS = int(os.getenv("MAX_NEW_TOKENS", "256"))
 LLAMA_THREADS = int(os.getenv("LLAMA_THREADS", "4"))
 LLAMA_CTX_SIZE = int(os.getenv("LLAMA_CTX_SIZE", "2048"))
 LLAMA_PARALLEL = int(os.getenv("LLAMA_PARALLEL", "1"))
+LLAMA_BACKEND = os.getenv("LLAMA_BACKEND", "cpu").strip().lower()
+LLAMA_MAIN_GPU = int(os.getenv("LLAMA_MAIN_GPU", "0"))
+
+
+def resolve_gpu_layers() -> int:
+    configured = os.getenv("LLAMA_N_GPU_LAYERS")
+    if configured is not None and configured.strip():
+        return int(configured)
+    if LLAMA_BACKEND in {"metal", "auto"} and sys.platform == "darwin":
+        return -1
+    return 0
+
+
+LLAMA_N_GPU_LAYERS = resolve_gpu_layers()
 
 MODEL: dict = {}
 INFER_LOCK = Lock()
@@ -36,14 +51,20 @@ def validate_api_key(x_api_key: Optional[str], api_key: Optional[str], authoriza
 def load_model():
     if not Path(MODEL_FILE).exists():
         raise RuntimeError(f"GGUF 模型文件不存在: {MODEL_FILE}")
-    MODEL["llm"] = Llama(
+    llama_options = dict(
         model_path=MODEL_FILE,
         n_ctx=LLAMA_CTX_SIZE,
         n_threads=LLAMA_THREADS,
         n_threads_batch=LLAMA_THREADS,
         n_batch=512,
-        flash_attn=True, 
+        flash_attn=True,
     )
+
+    if LLAMA_N_GPU_LAYERS != 0:
+        llama_options["n_gpu_layers"] = LLAMA_N_GPU_LAYERS
+        llama_options["main_gpu"] = LLAMA_MAIN_GPU
+
+    MODEL["llm"] = Llama(**llama_options)
 
 
 @asynccontextmanager
@@ -101,7 +122,14 @@ def infer(req: TranslateRequest) -> str:
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "model_loaded": "llm" in MODEL, "model_file": MODEL_FILE, "parallel": LLAMA_PARALLEL}
+    return {
+        "status": "ok",
+        "model_loaded": "llm" in MODEL,
+        "model_file": MODEL_FILE,
+        "parallel": LLAMA_PARALLEL,
+        "backend": LLAMA_BACKEND,
+        "gpu_layers": LLAMA_N_GPU_LAYERS,
+    }
 
 
 @app.post("/translate")
